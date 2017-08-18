@@ -1,6 +1,7 @@
 import socket
 import json
-import cPickle
+#  import cPickle
+import tempfile
 
 
 class FunPodConnector(object):
@@ -9,7 +10,6 @@ class FunPodConnector(object):
         self.ip = ip
         self.port = port
 
-
     def handle(self, func):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind((self.ip, self.port))
@@ -17,25 +17,84 @@ class FunPodConnector(object):
 
         conn, addr = self.sock.accept()
         print('handle request received')
-        try:
-            data = True
-            buf = ''
-            while data:
-                data = conn.recv(4096)
-                buf += data
-
-            # echo back
-            conn.sendall(buf)
-            conn.shutdown(socket.SHUT_WR)
-
-        except Exception as e:
-            print e
-
-        finally:
-            conn.close()
+        buf = self.recv(conn=conn)
+        #  try:
+        #      data = True
+        #      buf = ''
+        #      while data:
+        #          data = conn.recv(4096)
+        #          buf += data
+        #
+        #      # echo back
+        #      conn.sendall(buf)
+        #      conn.shutdown(socket.SHUT_WR)
+        #
+        #  except Exception as e:
+        #      print e
+        #
+        #  finally:
+        #      conn.close()
 
         kwargs = json.loads(buf)
         gen = func(**kwargs)
+        for i in gen:
+            try:
+                conn, addr = self.sock.accept()
+                conn.send(str(i))
+                conn.shutdown(socket.SHUT_WR)
+            finally:
+                conn.close()
+
+        try:
+            conn, addr = self.sock.accept()
+            conn.send('EOF')
+            conn.shutdown(socket.SHUT_WR)
+        finally:
+            conn.close()
+        #  n = gen.next()
+        #  while n:
+        #      print n
+        #      self.send(cPickle.dumps(n))
+        #      n = gen.next()
+
+    def serve_recv_file(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((self.ip, self.port))
+        self.sock.listen(1)
+
+        conn, addr = self.sock.accept()
+        print('handle request received')
+        f = self.recv_file(conn=conn)
+        return f
+
+    def handle_file(self, func):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((self.ip, self.port))
+        self.sock.listen(1)
+
+        conn, addr = self.sock.accept()
+        print('handle request received')
+        f = self.recv_file(conn=conn)
+        #  try:
+        #      data = True
+        #      buf = ''
+        #      while data:
+        #          data = conn.recv(4096)
+        #          buf += data
+        #
+        #      # echo back
+        #      conn.sendall(buf)
+        #      conn.shutdown(socket.SHUT_WR)
+        #
+        #  except Exception as e:
+        #      print e
+        #
+        #  finally:
+        #      conn.close()
+
+        #  kwargs = json.loads(buf)
+        #  print f.read()
+        gen = func(f)
         for i in gen:
             try:
                 conn, addr = self.sock.accept()
@@ -72,21 +131,41 @@ class FunPodConnector(object):
         finally:
             self.sock.close()
 
-    def recv(self):
+    def recv(self, conn=None):
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.connect((self.ip, self.port))
-            #  self.sock.sendall(json.dumps(data_send).encode('utf-8'))
+            if not conn:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect((self.ip, self.port))
+                #  self.sock.sendall(json.dumps(data_send).encode('utf-8'))
+                conn = self.sock
 
             buf = ''
             data = True
             while data:
-                data = self.sock.recv(2048)
+                data = conn.recv(2048)
                 buf += data
             return buf
-                #  return json.loads(unicode(buf, 'utf-8'))
         finally:
-            self.sock.close()
+            conn.close()
+
+    def recv_file(self, conn=None):
+        try:
+            if not conn:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect((self.ip, self.port))
+                #  self.sock.sendall(json.dumps(data_send).encode('utf-8'))
+                conn = self.sock
+
+            f = tempfile.TemporaryFile()
+            data = True
+            while data:
+                data = conn.recv(2048)
+                f.write(data)
+            f.seek(0)
+            return f
+
+        finally:
+            conn.close()
 
     def serve_generator(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -115,8 +194,11 @@ class FunPodConnector(object):
             finally:
                 conn.close()
 
-    def client_generator(self, **kwargs):
-        self.send(json.dumps(kwargs))
+    def client_generator(self, fileobj=False, **kwargs):
+        if not fileobj:
+            self.send(json.dumps(kwargs))
+        else:
+            self.send(fileobj.read())
         while True:
             recv = self.recv()
             if recv == 'EOF':
