@@ -2,6 +2,34 @@ import socket
 import json
 #  import cPickle
 import tempfile
+import docker
+
+
+class FunPod(object):
+    """ Functional pod that is called on-demand """
+    def __init__(self, name):
+        self.name = name
+        self.docker_client = docker.from_env()
+        self.container = None
+        self.fpc = FunPodConnector()
+
+    def build(self, func):
+        """TODO: build image given handle function """
+        pass
+
+    def spinup(self):
+        self.container = self.docker_client.containers.run(
+                        self.name,
+                        detach=True,
+                        ports={'9998': '9998'})
+
+    def kill(self):
+        if self.container:
+            try:
+                print self.container.status
+                self.container.kill()
+            except Exception as e:
+                print e
 
 
 class FunPodConnector(object):
@@ -18,22 +46,6 @@ class FunPodConnector(object):
         conn, addr = self.sock.accept()
         print('handle request received')
         buf = self.recv(conn=conn)
-        #  try:
-        #      data = True
-        #      buf = ''
-        #      while data:
-        #          data = conn.recv(4096)
-        #          buf += data
-        #
-        #      # echo back
-        #      conn.sendall(buf)
-        #      conn.shutdown(socket.SHUT_WR)
-        #
-        #  except Exception as e:
-        #      print e
-        #
-        #  finally:
-        #      conn.close()
 
         kwargs = json.loads(buf)
         gen = func(**kwargs)
@@ -51,21 +63,6 @@ class FunPodConnector(object):
             conn.shutdown(socket.SHUT_WR)
         finally:
             conn.close()
-        #  n = gen.next()
-        #  while n:
-        #      print n
-        #      self.send(cPickle.dumps(n))
-        #      n = gen.next()
-
-    def serve_recv_file(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((self.ip, self.port))
-        self.sock.listen(1)
-
-        conn, addr = self.sock.accept()
-        print('handle request received')
-        f = self.recv_file(conn=conn)
-        return f
 
     def handle_file(self, func):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -75,25 +72,7 @@ class FunPodConnector(object):
         conn, addr = self.sock.accept()
         print('handle request received')
         f = self.recv_file(conn=conn)
-        #  try:
-        #      data = True
-        #      buf = ''
-        #      while data:
-        #          data = conn.recv(4096)
-        #          buf += data
-        #
-        #      # echo back
-        #      conn.sendall(buf)
-        #      conn.shutdown(socket.SHUT_WR)
-        #
-        #  except Exception as e:
-        #      print e
-        #
-        #  finally:
-        #      conn.close()
 
-        #  kwargs = json.loads(buf)
-        #  print f.read()
         gen = func(f)
         for i in gen:
             try:
@@ -109,11 +88,16 @@ class FunPodConnector(object):
             conn.shutdown(socket.SHUT_WR)
         finally:
             conn.close()
-        #  n = gen.next()
-        #  while n:
-        #      print n
-        #      self.send(cPickle.dumps(n))
-        #      n = gen.next()
+
+    def serve_recv_file(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((self.ip, self.port))
+        self.sock.listen(1)
+
+        conn, addr = self.sock.accept()
+        print('handle request received')
+        f = self.recv_file(conn=conn)
+        return f
 
     def send(self, data_send):
         try:
