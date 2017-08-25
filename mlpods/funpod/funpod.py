@@ -77,7 +77,7 @@ class FunPod(object):
 
         conn, addr = self.sock.accept()
         print('handle request received')
-        buf = self.recv(conn=conn)
+        buf = self.connector.recv(conn=conn)
 
         kwargs = json.loads(buf)
         gen = func(**kwargs)
@@ -103,7 +103,7 @@ class FunPod(object):
 
         conn, addr = self.sock.accept()
         print('handle request received')
-        f = self.recv_file(conn=conn)
+        f = self.connector.recv_file(conn=conn)
 
         gen = func(f)
         for i in gen:
@@ -123,7 +123,7 @@ class FunPod(object):
 
     def serve_recv_file(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((self.ip, self.port))
+        self.sock.bind((self._ip, self._port))
         self.sock.listen(1)
 
         conn, addr = self.sock.accept()
