@@ -11,13 +11,15 @@ MAX_TRY = 20
 
 class FunPod(object):
     """ Functional pod that is called on-demand """
-    def __init__(self, name):
+    def __init__(self, name, start_pod=True, **kwargs):
         self.name = name
+        self.kwargs = kwargs
         self.docker_client = docker.from_env()
         self.container = None
         self._ip = '0.0.0.0'
         self._port = 9998
         self.connector = FunPodConnector(funpod=self)
+        self.spinup()
 
     @property
     def port(self):
@@ -54,8 +56,12 @@ class FunPod(object):
                 self.container = self.docker_client.containers.run(
                     self.name,
                     detach=True,
-                    ports={str(self._port): str(self.connector.port)})
+                    ports={str(self._port): str(self.connector.port)},
+                    **self.kwargs
+                )
                 success = True
+                print 'connected to pod {} at port {}'.format(
+                    self.name, self.connector.port)
                 break
             except docker.errors.APIError:
                 # try a different port
@@ -152,7 +158,8 @@ class FunPod(object):
 
 class FunPodConnector(object):
 
-    def __init__(self, name=None, funpod=None, ip='0.0.0.0', port=9998):
+    def __init__(self, name=None, funpod=None,
+                 ip='0.0.0.0', port=9998, start_pod=True):
         if name and funpod:
             raise Exception('Args name and funpod cannot coexist')
         elif not name and not funpod:
@@ -289,8 +296,10 @@ class FunPodConnector(object):
         else:
             self.funpod.spinup()
         time.sleep(0.25)
+        print self.funpod.container.exec_run('echo "funpod ready"')
 
-    def client_generator(self, serializer=None, start_pod=True, fileobj=False, **kwargs):
+    def client_generator(self, serializer=None, start_pod=False,
+                         fileobj=False, **kwargs):
         """
         client generator calls FunPod and return a generator
         Args:
@@ -314,10 +323,14 @@ class FunPodConnector(object):
         try:
             if start_pod:
                 self.start_or_restart_pod()
+            else:
+                time.sleep(0.5)
             if not fileobj:
                 self.send(json.dumps(kwargs))
+                print('kwargs {} sent'.format(kwargs))
             else:
                 self.send(fileobj.read())
+                print('fileobj sent')
             while True:
                 recv = self.recv()
                 if recv == 'EOF':
@@ -336,8 +349,8 @@ def main_test():
         for i in xrange(int(n)):
             yield i
 
-    connect = FunPodConnector()
-    connect.handle(makelist)
+    pod = FunPod('test')
+    pod.handle(makelist)
 
 
 if __name__ == '__main__':
