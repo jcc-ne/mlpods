@@ -4,6 +4,7 @@ import cPickle
 import tempfile
 import docker
 import time
+import re
 
 
 MAX_TRY = 20
@@ -19,7 +20,8 @@ class FunPod(object):
         self._ip = '0.0.0.0'
         self._port = 9998
         self.connector = FunPodConnector(funpod=self)
-        self.spinup()
+        if start_pod:
+            self.spinup()
 
     @property
     def port(self):
@@ -74,6 +76,15 @@ class FunPod(object):
                             format(self.name))
         print 'Funpod {} is spun up, port: {}'.format(
             self.name, self.connector.port)
+
+        running = False
+        t0 = time.time()
+        while not running:
+            procs = self.container.top()['Processes']
+            running = map(lambda x: re.search('funpod', x[-1]), procs)[-1]
+            time.sleep(0.1)
+        print 'Handle function running, time elapsed', time.time() - t0
+        time.sleep(0.5)
         return self.connector.port
 
     def handle(self, func):
@@ -127,16 +138,6 @@ class FunPod(object):
         finally:
             conn.close()
 
-    def serve_recv_file(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((self._ip, self._port))
-        self.sock.listen(1)
-
-        conn, addr = self.sock.accept()
-        print('handle request received')
-        f = self.recv_file(conn=conn)
-        return f
-
     def kill(self, c=None):
         if not c:
             c = self.container
@@ -159,7 +160,7 @@ class FunPod(object):
 class FunPodConnector(object):
 
     def __init__(self, name=None, funpod=None,
-                 ip='0.0.0.0', port=9998, start_pod=True):
+                 ip='0.0.0.0', port=9998):
         if name and funpod:
             raise Exception('Args name and funpod cannot coexist')
         elif not name and not funpod:
@@ -200,7 +201,7 @@ class FunPodConnector(object):
                 buf = ''
                 data = True
                 while data:
-                    data = self.sock.recv(2048)
+                    data = self.sock.recv(20480)
                     buf += data
                     #  return json.loads(unicode(buf, 'utf-8'))
             except Exception as e:
@@ -228,7 +229,7 @@ class FunPodConnector(object):
                 buf = ''
                 data = True
                 while data:
-                    data = conn.recv(2048)
+                    data = conn.recv(20480)
                     buf += data
                 return buf
 
@@ -252,40 +253,13 @@ class FunPodConnector(object):
             f = tempfile.TemporaryFile()
             data = True
             while data:
-                data = conn.recv(2048)
+                data = conn.recv(20480)
                 f.write(data)
             f.seek(0)
             return f
 
         finally:
             conn.close()
-
-    def serve_generator(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((self._ip, self._port))
-        self.sock.listen(1)
-
-        while True:
-            conn, addr = self.sock.accept()
-            print('client connected')
-            try:
-                data = True
-                buf = ''
-                while data:
-                    data = conn.recv(4096)
-                    buf += data
-
-                # echo back
-                conn.sendall(buf)
-                conn.shutdown(socket.SHUT_WR)
-
-                #  return json.loads(unicode(buf, 'utf-8'))
-                if buf == u'EOF':
-                    return
-                yield buf
-
-            finally:
-                conn.close()
 
     def start_or_restart_pod(self):
         if not self.funpod:
@@ -318,13 +292,14 @@ class FunPodConnector(object):
             serializer = cPickle
 
         if fileobj and kwargs:
-            raise Exception('client generator does not accept '
+            raise Exception('client generator does not accept both: '
                             'only either fileobj or kwargs')
+            #  kwargs['fileobj'] = fileobj.read()
         try:
             if start_pod:
                 self.start_or_restart_pod()
-            else:
-                time.sleep(0.5)
+            #  else:
+            #      time.sleep(0.5)
             if not fileobj:
                 self.send(json.dumps(kwargs))
                 print('kwargs {} sent'.format(kwargs))
@@ -335,13 +310,14 @@ class FunPodConnector(object):
                 recv = self.recv()
                 if recv == 'EOF':
                     break
-                #  yield serializer.loads(recv)
                 yield serializer.loads(recv)
         except Exception as e:
-            print e
+            print e.__dict__
+            print recv
+            raise e
         finally:
-            if start_pod:
-                self.funpod.kill()
+            #  if start_pod:
+            self.funpod.kill()
 
 
 def main_test():
