@@ -4,7 +4,7 @@ import cPickle
 import tempfile
 import docker
 import time
-import re
+#  import re
 
 
 MAX_TRY = 20
@@ -57,6 +57,7 @@ class FunPod(object):
             try:
                 self.container = self.docker_client.containers.run(
                     self.name,
+                    environment={'PYTHONUNBUFFERED': 1},
                     detach=True,
                     ports={str(self._port): str(self.connector.port)},
                     **self.kwargs
@@ -80,11 +81,12 @@ class FunPod(object):
         running = False
         t0 = time.time()
         while not running:
-            procs = self.container.top()['Processes']
-            running = map(lambda x: re.search('funpod', x[-1]), procs)[-1]
+            #  procs = self.container.top()['Processes']
+            #  running = map(lambda x: re.search('funpod', x[-1]), procs)[-1]
+            running = self.container.logs()
             time.sleep(0.1)
         print 'Handle function running, time elapsed', time.time() - t0
-        time.sleep(0.5)
+        time.sleep(0.2)
         return self.connector.port
 
     def handle(self, func):
