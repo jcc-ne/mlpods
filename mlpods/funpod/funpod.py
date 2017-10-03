@@ -4,7 +4,7 @@ import cPickle
 import tempfile
 import docker
 import time
-#  import re
+import re
 
 
 MAX_TRY = 20
@@ -83,7 +83,7 @@ class FunPod(object):
         while not running:
             #  procs = self.container.top()['Processes']
             #  running = map(lambda x: re.search('funpod', x[-1]), procs)[-1]
-            running = self.container.logs()
+            running = re.search('listening...', self.container.logs())
             time.sleep(0.1)
         print 'Handle function running, time elapsed', time.time() - t0
         time.sleep(0.2)
@@ -93,6 +93,7 @@ class FunPod(object):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind((self._ip, self._port))
         self.sock.listen(1)
+        print('listening...')
 
         conn, addr = self.sock.accept()
         print('handle request received')
